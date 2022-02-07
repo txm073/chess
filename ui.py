@@ -200,5 +200,5 @@ class GameUI(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     game = GameUI()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 

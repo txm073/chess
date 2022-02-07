@@ -80,6 +80,7 @@ class InternalBoard:
         self.change_turn()
 
     def get_valid_moves(self):
+        return [self.to_xy(i) for i in range(64)]
         piece = self.piece_at(self.selected)
         row, col = self.selected
         if piece.type == "pawn":
@@ -208,7 +209,7 @@ class InternalBoard:
         self.board.append([Piece(p, "white") for p in ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]])
         self.board.append([Piece("pawn", "white")] * 8)
         for i in range(4):
-            self.board.append([0] * 8)
+            self.board.append([Piece(None, None)] * 8)
         self.board.append([Piece("pawn", "black")] * 8)
         self.board.append([Piece(p, "black") for p in ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]])
         self.board = np.array(self.board).reshape(8, 8)
@@ -228,20 +229,3 @@ class InternalBoard:
         return n // 8, n % 8
 
 
-class Piece:
-
-    def __init__(self, type, colour):
-        self.type = type
-        self.colour = colour
-        self.image = os.path.join(f"{self.colour} pieces", f"{self.type}.png")
-
-    def __repr__(self):
-        letter = self.type[0]
-        if self.type == "knight":
-            letter = "n"
-        if self.colour == "white":
-            return letter.upper()
-        return letter.lower()
-
-    def promote(self, new):
-        self.type = new
