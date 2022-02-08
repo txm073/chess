@@ -17,6 +17,12 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from internal_v2 import InternalBoard
 
+_PIL = True
+try:
+    from PIL import Image
+except ImportError:
+    _PIL = False
+
 
 roundToSigFig = lambda x, n: x if x == 0 else round(x, -int(math.floor(math.log10(abs(x)))) + (n - 1))
 centerOf = lambda i, j: (j[0] // 2 - i[0] // 2, j[1] // 2 - i[1] // 2)
@@ -41,12 +47,12 @@ class Piece(QLabel):
         self.type = type
         self.colour = colour
         self.null = (self.type is None and self.colour is None)
-        self.image = os.path.join(f"{self.colour} pieces", f"{self.type}.png") if not self.null else "transparent.png"
-        
+        self.image = os.path.join(BASE_PATH, (os.path.join(f"{self.colour} pieces", f"{self.type}.png") if not self.null else "transparent.png"))
+        self.raw_image = QImage(self.image)
+
         super(Piece, self).__init__(**kwargs)
         self.setMouseTracking(True)
-
-        self.setPixmap(QPixmap(os.path.join(BASE_PATH, self.image)))
+        self.setPixmap(QPixmap.fromImage(self.raw_image))
 
     def __repr__(self):
         if self.null:
@@ -58,6 +64,25 @@ class Piece(QLabel):
             return letter.upper()
         return letter.lower()
 
+    def _calculate_bounding_box(self):
+        if not _PIL or self.null:
+            return None
+        image = Image.open(self.image)
+        alpha = np.array(image.split()[-1])
+        height, width = alpha.shape
+        top = left = solid_x = solid_y = 0
+        for i in range(width):
+            for j in range(height):
+                if alpha[j][i] == 0:
+                    left += 1
+                else:
+                    solid_x += 1
+            if left == height:
+                top += 1
+            else:
+                solid_y += 1
+        bottom = height - top - solid_y
+
     def promote(self, new):
         self.type = new
 
@@ -66,6 +91,9 @@ class Piece(QLabel):
         self.mouse_move_pos = None
         self.prev_mouse_pos = self.x(), self.y()
         if event.button() == Qt.LeftButton:
+            px_x = event.pos().x() * (self.raw_image.width() / SQUARE_SIZE)
+            px_y = event.pos().y() * (self.raw_image.height() / SQUARE_SIZE)
+            col = self.raw_image.pixelColor(px_x, px_y).getRgb()
             self.mouse_press_pos = event.globalPos()
             self.mouse_move_pos = event.globalPos()
 
@@ -97,26 +125,23 @@ class Piece(QLabel):
 
 class BoardWidget(QWidget):
 
-    def __init__(self, *args, **kwargs):
-        super(BoardWidget, self).__init__(*args, **kwargs)
+    def __init__(self, parent, *args, **kwargs):
+        super(BoardWidget, self).__init__(parent, *args, **kwargs)
         self.setMouseTracking(True)
 
+        self.parent = parent
         self.squares = {}
 
-    def init_ui(self, board):
-        for j in range(8):
-            for i in range(8):
+    def init_ui(self):
+        for i in range(8):
+            for j in range(8):
                 frame = QFrame(self) 
                 frame.setGeometry(i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)    
                 frame.setStyleSheet(f"background-color: rgb({BROWN if (i + j) % 2 else WHITE});")
                 
-                piece = board[j][i]
-                piece.resize(SQUARE_SIZE, SQUARE_SIZE)
-                piece.setStyleSheet("background-color: transparent; border: none;")
+                piece = self.parent.board[i][j]
                 piece.setScaledContents(True)
-                self.squares[(i, j)] = piece
-                self.draw_piece(piece, (i, j))
-                piece.raise_()
+                piece.setStyleSheet("background-color: transparent; border: none;")                
 
     def widget_at(self, pos):
         return self.squares[pos]
@@ -125,11 +150,12 @@ class BoardWidget(QWidget):
         piece.move(pos[0] * SQUARE_SIZE, pos[1] * SQUARE_SIZE)
         print(piece, pos, (piece.x(), piece.y()))
 
-    def update_window(self, board, highlighted=[]):
-        for i, row in enumerate(board):
-            for j, square in enumerate(row):
-                pass
-
+    def update(self, board):
+        for i in range(8):
+            for j in range(8):
+                piece = board[j][i]
+                piece.setGeometry(i * SQUARE_SIZE, j * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+                piece.raise_()
 
 class Window(QMainWindow):
 
@@ -137,7 +163,9 @@ class Window(QMainWindow):
         super(Window, self).__init__(*args, **kwargs)
         self.init_ui()
         self.reset()
-        self.board_widget.init_ui(self.board)
+        self.board_widget.init_ui()
+        self.board_widget.update(self.board)
+
         self.setMouseTracking(True)
 
     def init_ui(self):
@@ -149,10 +177,10 @@ class Window(QMainWindow):
     def reset(self):
         self.board = []
         self.board.append([Piece(p, "white", parent=self.board_widget) for p in ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]])
-        self.board.append([Piece("pawn", "white", parent=self.board_widget)] * 8)
+        self.board.append([Piece("pawn", "white", parent=self.board_widget) for i in range(8)])
         for i in range(4):
-            self.board.append([Piece(None, None, parent=self.board_widget)] * 8)
-        self.board.append([Piece("pawn", "black", parent=self.board_widget)] * 8)
+            self.board.append([Piece(None, None, parent=self.board_widget) for i in range(8)])
+        self.board.append([Piece("pawn", "black", parent=self.board_widget) for i in range(8)])
         self.board.append([Piece(p, "black", parent=self.board_widget) for p in ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]])
         self.board = np.array(self.board).reshape(8, 8)
         print("BOARD:")
